@@ -1,15 +1,21 @@
 #include "stdafx.h"
 #include "GameMaster.h"
 
+std::random_device start;
+std::mt19937 random(start());
 
 GameMaster::GameMaster(const int height, const int width)
 {
 	size[0] = height;
 	size[1] = width > 8 ? 8 : width;
-	masterKey = colors = new char[size[1]];
+	colors = new char[size[1]];
+	masterKey = new char[size[1]];
+	userKey = new char[size[1]];
 	for (int i = 0; i < size[1]; i++) {
 		colors[i] = maxColors[i];
 	}
+	dice = new std::uniform_int_distribution<>(0, size[1] - 1);
+
 }
 
 void GameMaster::Instructions() {
@@ -42,13 +48,16 @@ void GameMaster::CreateGrid(const int& height, const int& width) {
 void GameMaster::Play() {
 	CreateGrid(size[0], size[1]);
 	Instructions();
+	CreateKey();
 	bool win = false;
 	do {
 		DrawGrid();
-		UpdateGrid(AskUserInput());
+		AskUserInput();
+		UpdateGrid();
+		win = CheckWin();
 		rounds++;
-	} while (rounds < size[0] || !win);
-
+	} while (!win && (rounds < size[0]));
+	GameState(win);
 }
 
 void GameMaster::DrawGrid() {
@@ -68,22 +77,80 @@ void GameMaster::DrawGrid() {
 	}
 }
 
-void GameMaster::UpdateGrid(char* userKey) {
+void GameMaster::UpdateGrid() {
 	for (int i = 0; i < size[1]; i++) {
 		grid[rounds][i] = " " + std::string(1, (userKey[i])) + " ";
 	}
 }
 
 char* GameMaster::AskUserInput() {
-	char* key = new char[size[1]];
 	std::string choice;
-	std::cout << "Enter a series of " << size[1] << " letters representing colors\n" << PrintColor(colors) << ": ";
-	std::cin >> choice;
-	strcpy_s(key, size[1], choice.c_str());
-	return key;
+	std::cout << "Enter a series of " << size[1] << " letters representing colors " << PrintColor(colors) << ": ";
+	std::getline(std::cin, choice);
+	std::string::iterator end_pos = std::remove(choice.begin(), choice.end(), ' ');
+	choice.erase(end_pos, choice.end());
+	std::transform(choice.begin(), choice.end(), choice.begin(), ::toupper);
+	//strcpy_s(key, size[1] + 1, choice.c_str());
+	for (int i = 0; i < choice.length(); i++) {
+		userKey[i] = choice[i];
+	}
+	return userKey;
 }
 
-std::string GameMaster::PrintColor(char* colors) {
+void GameMaster::GameState(bool &win) {
+	std::cout << std::endl;
+	std::string end = win ? "You won!" : "You lost! The key was" + PrintColor(masterKey);
+	std::cout << end << std::endl << std::endl;
+}
+
+void GameMaster::CreateKey() {
+	for (int i = 0; i < size[1]; i++) {
+		masterKey[i] = colors[dice[0](random)];
+	}
+}
+
+bool GameMaster::CheckWin() {
+	int black = 0, white = 0;
+	int keyLength = size[1];
+	char* tempKey = new char[size[1]];
+	for (int i = 0; i < keyLength; i++) {
+		tempKey[i] = masterKey[i];
+	}
+
+	for (int i = size[1] - 1; i >= 0; --i) {
+		if (userKey[i] == tempKey[i]) {
+			black += 1;
+			keyLength--;
+			RemoveChar(userKey, i, keyLength);
+			RemoveChar(tempKey, i, keyLength);
+		}
+	}
+	if (black == size[1]) return true;
+	grid[rounds][size[1]] = std::to_string(black) + " B ";
+	for (int j = keyLength - 1; j >= 0; --j) {
+		for (int k = keyLength - 1; k >= 1; --k) {
+			if (tempKey[j] == userKey[k]) {
+				white += 1;
+				RemoveChar(tempKey, j, keyLength);
+				RemoveChar(userKey, k, keyLength);
+				break;
+			}
+		}
+	}
+	grid[rounds][size[1] + 1] = std::to_string(white) + " W";
+	delete[] tempKey;
+	return false;
+}
+
+char* GameMaster::RemoveChar(char* &list, int &index, int &length) {
+	int counter = 0;
+	for (int i = index; i < length; i++) {
+		list[i] = list[i + 1];
+	}
+	return list;
+}
+
+std::string GameMaster::PrintColor(char* &colors) {
 	std::string cString;
 	for (int i = 0; i < size[1]; i++) {
 		cString += dictionnary.find(colors[i])->second;
@@ -97,4 +164,8 @@ GameMaster::~GameMaster() {
 		delete[] grid[i];
 	}
 	delete[] grid;
+	delete[] masterKey;
+	delete[] userKey;
+	delete[] colors;
+	delete dice;
 }
